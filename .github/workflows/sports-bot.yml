@@ -1,0 +1,44 @@
+name: Sports News Bot
+
+on:
+  schedule:
+    - cron: '0 3 * * *'      # 06:00 МСК
+    - cron: '0 11 * * *'     # 14:00 МСК
+    - cron: '0 14 * * *'     # 17:00 МСК
+    - cron: '10 19 * * *'    # 22:10 МСК
+  workflow_dispatch:
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine mode
+        id: mode
+        run: |
+          HOUR=$(date -u +%H)
+          if [ "$HOUR" = "03" ]; then
+            echo "mode=morning" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "11" ] || [ "$HOUR" = "14" ]; then
+            echo "mode=day" >> $GITHUB_OUTPUT
+          else
+            echo "mode=evening" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run bot
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+        run: |
+          sed -i "s|СЮДА_ТОКЕН|$BOT_TOKEN|g" bot.py
+          sed -i "s|@твой_канал|$CHANNEL_ID|g" bot.py
+          python bot.py --mode ${{ steps.mode.outputs.mode }}
