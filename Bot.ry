@@ -1,0 +1,115 @@
+import feedparser
+import requests
+import argparse
+from datetime import datetime
+import pytz
+
+# ================== НАСТРОЙКИ ==================
+BOT_TOKEN = "СЮДА_ТОКЕН"          # потом будем брать из Secrets
+CHANNEL_ID = "@твой_канал"        # или -100xxxxxxxxxx
+
+# RSS
+RSS_URL = "https://www.sports.ru/rss/topnews.xml"
+
+# Сколько новостей
+NEWS_COUNT = 6
+# ================================================
+
+MOSCOW_TZ = pytz.timezone("Europe/Moscow")
+
+def get_news(filter_sports=True):
+    feed = feedparser.parse(RSS_URL)
+    news = []
+
+    keywords = ["футбол", "хоккей", "рпл", "кхл", "нхл", "апел", "ла лига", 
+                "серия а", "бундеслига", "лига чемпионов", "лига европы",
+                "спартак", "зенит", "цска", "динамо", "локомотив", "краснодар"]
+
+    for entry in feed.entries:
+        title = entry.title.lower()
+        summary = getattr(entry, "summary", "").lower()
+
+        if filter_sports:
+            if not any(kw in title or kw in summary for kw in keywords):
+                continue
+
+        news.append({
+            "title": entry.title,
+            "link": entry.link
+        })
+
+        if len(news) >= NEWS_COUNT:
+            break
+
+    return news
+
+def format_news(news_list, header):
+    if not news_list:
+        return f"{header}\n\nСегодня свежих новостей пока мало."
+
+    text = f"{header}\n\n"
+    for i, item in enumerate(news_list, 1):
+        text += f"<b>{i}. {item['title']}</b>\n"
+        text += f"<a href='{item['link']}'>Читать →</a>\n\n"
+    
+    text += "──────────────\nИсточник: Sports.ru"
+    return text
+
+def morning_message():
+    news = get_news(filter_sports=True)
+    
+    text = "📅 <b>Доброе утро! Расписание и новости</b>\n\n"
+    
+    text += "⚽ <b>Футбол — расписание:</b>\n"
+    text += "• <a href='https://www.sports.ru/football/'>Все матчи на Sports.ru</a>\n"
+    text += "• <a href='https://www.livesport.ru/football/'>LiveSport</a>\n\n"
+    
+    text += "🏒 <b>Хоккей — расписание:</b>\n"
+    text += "• <a href='https://www.sports.ru/hockey/'>Все матчи на Sports.ru</a>\n"
+    text += "• <a href='https://www.khl.ru/'>Официальный сайт КХЛ</a>\n\n"
+    
+    text += "──────────────\n"
+    text += "🔥 <b>Свежие новости:</b>\n\n"
+    
+    for i, item in enumerate(news, 1):
+        text += f"<b>{i}. {item['title']}</b>\n"
+        text += f"<a href='{item['link']}'>Читать →</a>\n\n"
+    
+    text += "──────────────\nУдачного дня!"
+    return text
+
+def send_message(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": False
+    }
+    r = requests.post(url, data=payload, timeout=15)
+    if r.status_code == 200:
+        print("✅ Сообщение отправлено")
+    else:
+        print("❌ Ошибка:", r.text)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["morning", "day", "evening"], required=True)
+    args = parser.parse_args()
+
+    now = datetime.now(MOSCOW_TZ)
+    print(f"Время: {now.strftime('%d.%m.%Y %H:%M')} | Режим: {args.mode}")
+
+    if args.mode == "morning":
+        text = morning_message()
+    elif args.mode == "day":
+        news = get_news(filter_sports=True)
+        text = format_news(news, "⚽🏒 <b>Дневные спортивные новости</b>")
+    else:  # evening
+        news = get_news(filter_sports=True)
+        text = format_news(news, "🌙 <b>Вечерние новости | Итоги дня</b>")
+
+    send_message(text)
+
+if __name__ == "__main__":
+    main()
